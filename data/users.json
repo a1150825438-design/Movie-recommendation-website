@@ -1,0 +1,31 @@
+[
+  {
+    "id": "25256b6f-5097-4c0a-8037-455deccc2176",
+    "username": "test",
+    "salt": "a82f59807b2fbad8c90e8b669b5ff970",
+    "hash": "3cf238de1cc03e4693ff6a5d436170b7f95a12247368762bc1e8f3bfad02532feaf236e2593802b59c0b3e053de2454e66c95f6738acd1aeda65e24827679b90",
+    "createdAt": "2026-09-10T05:30:40.987Z"
+  },
+  {
+    "id": "48f913f9-e0c4-40d8-ad59-170f75fc60ea",
+    "username": "test2",
+    "salt": "7be834fd4b8e9cca419a58f8345ad1cb",
+    "hash": "12f525ff8d12080d2275560a3cf4735873bf8eb99897e56db8762eb5624ee8dd23ec86c4d4e0e2db6c37b5f0c2cd950549cf67828595ef660186a70b898f3249",
+    "createdAt": "2026-09-10T14:12:02.098Z"
+  },
+  {
+    "id": "55fc2b4b-e4ca-489d-9688-dd8e7e610fdb",
+    "username": "test3",
+    "salt": "e6e59d75ccca06fe6ecb075709491e07",
+    "hash": "895277a829b8cc83cc12dd45880e4b89e720caa678b3e9e3a5b21fa773afe60681140c8401d6db5c9a1bcedb747fb8a9b678390a4f2adac9ebf934945c0ab1c1",
+    "createdAt": "2026-09-10T14:37:38.647Z"
+  },
+  {
+    "id": "db1d153a-2de9-4356-910b-258e6edab952",
+    "username": "admin1",
+    "salt": "aaa6ae853c2f907a6bc0518f322f8fad",
+    "hash": "43d09978c19465983b7f1ebc6484489dfc702b83b97739a64f6c4ba7cea5a597ee9702166dbf811c1fe4a80ea244767619428b46dc68d158d777fceadc05b3db",
+    "isAdmin": true,
+    "createdAt": "2026-09-13T18:49:45.570Z"
+  }
+]

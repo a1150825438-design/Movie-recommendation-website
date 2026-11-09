@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Yingjian · My Account</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="movies.js"></script>
+  <link rel="stylesheet" href="page.css" />
+</head>
+<body>
+  <div id="app" v-cloak>
+    <div class="wrap">
+      <header>
+        <div class="brand">
+          <div class="logo">🎬</div>
+          <div>
+            <h1>Yingjian</h1>
+            <div class="subtitle">My Account</div>
+          </div>
+        </div>
+        <div class="auth">
+          <a class="auth-btn ghost" href="/">← Back to home</a>
+          <button v-if="user" class="auth-btn ghost" @click="logout">Log out</button>
+        </div>
+      </header>
+
+      <div class="profile-page">
+        <div class="empty" v-if="loading">
+          <div class="big">🎬</div>
+          <div>Loading your account…</div>
+        </div>
+
+        <div class="login-gate" v-else-if="!user">
+          <span>Log in to view your account</span>
+          <a class="auth-btn" href="/">Log in</a>
+        </div>
+
+        <template v-else>
+          <div class="profile-head">
+            <div
+              class="profile-avatar"
+              :title="avatarUploading ? 'Uploading…' : (profile.avatar ? 'Click to change avatar' : 'Click to upload avatar')"
+              @click="pickAvatar"
+            >
+              <img v-if="profile.avatar" :src="profile.avatar" alt="avatar" @error="profile.avatar = ''" />
+              <span v-else>👤</span>
+            </div>
+            <input ref="avatarInput" type="file" accept="image/*" style="display:none" @change="onAvatarChange" />
+            <div class="profile-id">
+              <div class="profile-name">{{ user }}</div>
+              <div class="profile-sig" v-if="profile.signature">"{{ profile.signature }}"</div>
+              <div class="profile-sig muted" v-else>No signature yet. Write one below.</div>
+            </div>
+            <div class="profile-stats">
+              <div class="profile-stat">
+                <div class="v">{{ profile.favorites.length }}</div>
+                <div class="l">❤ Watchlist</div>
+              </div>
+              <div class="profile-stat">
+                <div class="v">{{ profile.likeReceivedTotal }}</div>
+                <div class="l">👍 Likes received</div>
+              </div>
+            </div>
+            <div class="auth-error avatar-error" v-if="avatarError">{{ avatarError }}</div>
+          </div>
+
+          <div class="profile-card">
+            <h3>✏ Edit Profile</h3>
+            <label class="auth-label" for="profile-sig">Signature</label>
+            <textarea id="profile-sig" class="profile-textarea" v-model="sigDraft" maxlength="200" placeholder="Write something about yourself… (max 200 characters)"></textarea>
+
+            <div class="auth-error" v-if="profileError">{{ profileError }}</div>
+            <div class="profile-actions">
+              <button class="auth-btn ghost" @click="resetDrafts">Cancel</button>
+              <button class="auth-submit" :disabled="saving" @click="saveProfile">{{ saving ? 'Saving…' : 'Save Profile' }}</button>
+            </div>
+          </div>
+
+          <div class="profile-card">
+            <h3>❤ My Watchlist <span class="count" v-if="profile.favorites.length">({{ profile.favorites.length }})</span></h3>
+            <div class="empty" v-if="profile.favorites.length === 0">
+              <div class="big">💔</div>
+              <div>Your watchlist is empty. Browse the homepage.</div>
+              <a class="auth-btn" style="margin-top: 16px;" href="/">Browse movies</a>
+            </div>
+            <div v-else class="grid grid-sm">
+              <div class="card" v-for="m in favoriteMovies" :key="m.id" @click="openMovie(m)">
+                <div class="poster">
+                  <img v-if="!m.imgError" :src="m.poster" :alt="m.name" loading="lazy" @error="m.imgError = true" />
+                  <div v-else class="fallback">{{ m.name }}</div>
+                  <span class="badge">{{ m.category }}</span>
+                  <span class="rating">{{ ratingLabel(m) }}</span>
+                </div>
+                <div class="info">
+                  <div class="name">{{ m.name }}</div>
+                  <div class="sub">
+                    <span>{{ m.year }}</span>
+                    <span>·</span>
+                    <span>{{ m.director }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+
+    createApp({
+      data() {
+        return {
+          user: null,
+          loading: true,
+          profile: { signature: "", favorites: [], likeReceivedTotal: 0, avatar: "" },
+          sigDraft: "",
+          saving: false,
+          profileError: "",
+          avatarUploading: false,
+          avatarError: "",
+          movies: window.YJ_MOVIES || [],
+          movieRatings: {},
+        };
+      },
+      computed: {
+        favoriteMovies() {
+          return this.profile.favorites
+            .map((id) => this.movies.find((m) => m.id === id))
+            .filter(Boolean);
+        },
+      },
+      methods: {
+        getToken() {
+          try { return localStorage.getItem("yj_token"); } catch (e) { return null; }
+        },
+        setToken(token) {
+          try {
+            if (token) localStorage.setItem("yj_token", token);
+            else localStorage.removeItem("yj_token");
+          } catch (e) {}
+        },
+        api(path, opts = {}) {
+          const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+          const token = this.getToken();
+          if (token) headers["Authorization"] = "Bearer " + token;
+          return fetch("/api" + path, Object.assign({}, opts, { headers })).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Request failed. Please try again later.");
+            return data;
+          });
+        },
+        async loadMovies() {
+          try {
+            const data = await this.api("/movies");
+            for (const ov of data.movies || []) {
+              const m = this.movies.find((x) => x.id === ov.id);
+              if (!m) continue;
+              if (ov.poster !== m.poster) m.imgError = !ov.poster;
+              Object.assign(m, ov);
+            }
+          } catch (e) {
+            // If fetching admin edits fails, fall back to the local library (silently)
+          }
+        },
+        async loadRatings() {
+          try {
+            const data = await this.api("/movies/ratings");
+            this.movieRatings = {};
+            for (const r of data.ratings || []) {
+              this.movieRatings[r.movieId] = { avgRating: r.avgRating, ratingCount: r.ratingCount };
+            }
+          } catch (e) {
+            // Fall back to current data if the fetch fails (silently)
+          }
+        },
+        ratingLabel(m) {
+          const r = this.movieRatings[m.id];
+          return r && r.ratingCount > 0 ? "★ " + r.avgRating.toFixed(1) : "No ratings yet";
+        },
+        async restore() {
+          if (!this.getToken()) { this.loading = false; return; }
+          try {
+            const data = await this.api("/me/profile");
+            this.user = data.username;
+            this.applyProfile(data);
+          } catch (e) {
+            this.setToken(null);
+            this.user = null;
+          } finally {
+            this.loading = false;
+          }
+        },
+        applyProfile(data) {
+          this.profile = {
+            signature: data.signature || "",
+            favorites: data.favorites || [],
+            likeReceivedTotal: data.likeReceivedTotal || 0,
+            avatar: data.avatar || "",
+          };
+          this.resetDrafts();
+        },
+        resetDrafts() {
+          this.sigDraft = this.profile.signature;
+          this.profileError = "";
+        },
+        pickAvatar() {
+          if (this.avatarUploading) return;
+          if (this.$refs.avatarInput) this.$refs.avatarInput.click();
+        },
+        async onAvatarChange(e) {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          if (!/^image\//.test(file.type)) { this.avatarError = "Please choose an image file"; return; }
+          this.avatarUploading = true;
+          this.avatarError = "";
+          try {
+            const dataUrl = await this.resizeImage(file, 256);
+            const data = await this.api("/me/avatar", { method: "POST", body: JSON.stringify({ avatar: dataUrl }) });
+            this.profile.avatar = data.avatar;
+          } catch (err) {
+            this.avatarError = (err && err.message) ? err.message : "Failed to upload avatar. Please try again.";
+          } finally {
+            this.avatarUploading = false;
+            if (this.$refs.avatarInput) this.$refs.avatarInput.value = "";
+          }
+        },
+        resizeImage(file, maxSize) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const img = new Image();
+              img.onload = () => {
+                const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+                const w = Math.max(1, Math.round(img.width * scale));
+                const h = Math.max(1, Math.round(img.height * scale));
+                const canvas = document.createElement("canvas");
+                canvas.width = w; canvas.height = h;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL("image/png"));
+              };
+              img.onerror = () => reject(new Error("Cannot read this image"));
+              img.src = reader.result;
+            };
+            reader.onerror = () => reject(new Error("Cannot read this file"));
+            reader.readAsDataURL(file);
+          });
+        },
+        async saveProfile() {
+          if (this.saving) return;
+          this.saving = true;
+          this.profileError = "";
+          try {
+            const data = await this.api("/me/profile", {
+              method: "PUT",
+              body: JSON.stringify({ signature: this.sigDraft.trim() }),
+            });
+            this.profile.signature = data.signature || "";
+            this.sigDraft = this.profile.signature;
+          } catch (e) {
+            this.profileError = e.message;
+          } finally {
+            this.saving = false;
+          }
+        },
+        async logout() {
+          try { await this.api("/logout", { method: "POST" }); } catch (e) {}
+          this.setToken(null);
+          location.href = "/";
+        },
+        openMovie(m) {
+          location.href = "/#/movie/" + m.id;
+        },
+      },
+      mounted() {
+        this.loadMovies();
+        this.loadRatings();
+        this.restore();
+      },
+    }).mount("#app");
+  </script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+[
+  {
+    "id": "b86b42f9-badd-4410-a4cf-41d1caeefe4d",
+    "userId": "25256b6f-5097-4c0a-8037-455deccc2176",
+    "actorId": "48f913f9-e0c4-40d8-ad59-170f75fc60ea",
+    "actorUsername": "test2",
+    "movieId": 1,
+    "commentId": "e78a9efc-3f6f-4309-aa1b-0d6c2c6e767a",
+    "text": "lollollol",
+    "read": true,
+    "createdAt": "2026-09-11T06:08:24.413Z"
+  },
+  {
+    "id": "71175b07-9cca-4b9f-aa46-932eb53295fa",
+    "userId": "25256b6f-5097-4c0a-8037-455deccc2176",
+    "actorId": "48f913f9-e0c4-40d8-ad59-170f75fc60ea",
+    "actorUsername": "test2",
+    "movieId": 1,
+    "commentId": "eb651a25-c537-4d77-bb2e-154d28279afa",
+    "text": "me too",
+    "read": true,
+    "createdAt": "2026-09-11T06:08:31.432Z"
+  },
+  {
+    "id": "ab7e88c0-16fd-4c60-9b3f-b504c7d3fa54",
+    "type": "like",
+    "userId": "48f913f9-e0c4-40d8-ad59-170f75fc60ea",
+    "actorId": "25256b6f-5097-4c0a-8037-455deccc2176",
+    "actorUsername": "test",
+    "movieId": 1,
+    "commentId": "563a209b-ad11-46bc-a652-da80c8bc2fd2",
+    "text": "lollollol",
+    "read": true,
+    "createdAt": "2026-09-11T16:04:13.273Z"
+  },
+  {
+    "id": "7a20a7ca-e744-40e8-b0fb-d97d83e2b27e",
+    "type": "like",
+    "userId": "48f913f9-e0c4-40d8-ad59-170f75fc60ea",
+    "actorId": "25256b6f-5097-4c0a-8037-455deccc2176",
+    "actorUsername": "test",
+    "movieId": 1,
+    "commentId": "563a209b-ad11-46bc-a652-da80c8bc2fd2",
+    "text": "lollollol",
+    "read": true,
+    "createdAt": "2026-09-13T09:03:19.115Z"
+  }
+]

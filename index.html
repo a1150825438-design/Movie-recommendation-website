@@ -1,0 +1,1599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Yingjian · Movie Recommendations</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="movies.js"></script>
+  <link rel="stylesheet" href="page.css" />
+</head>
+<body>
+  <div id="app" v-cloak>
+    <div class="wrap">
+      <header>
+        <div class="brand">
+          <div class="logo">🎬</div>
+          <div>
+            <h1>Yingjian</h1>
+            <div class="subtitle">Interactive movie recommendation website</div>
+          </div>
+        </div>
+        <div class="auth">
+          <template v-if="user">
+            <a class="auth-user" href="/user.html" title="My Account">
+              <img v-if="myAvatar" class="u-avatar u-avatar-sm" :src="myAvatar" alt="avatar" @error="myAvatar = ''" />
+              <span v-else>👤</span>
+              <span>{{ user }}</span>
+            </a>
+            <div class="notif-wrap" ref="notifWrap">
+              <button class="notif-bell" @click="toggleNotif" aria-label="Notifications">
+                🔔
+                <span class="notif-badge" v-if="notifUnread > 0">{{ notifUnread > 99 ? '99+' : notifUnread }}</span>
+              </button>
+              <transition name="pop">
+                <div class="notif-panel" v-if="notifOpen">
+                  <div class="notif-head">
+                    <span>Notifications</span>
+                    <button class="notif-close" @click="notifOpen = false" aria-label="Close">✕</button>
+                  </div>
+                  <div class="notif-body">
+                    <div class="notif-empty" v-if="notifLoading">Loading…</div>
+                    <div class="notif-empty" v-else-if="notifications.length === 0">No notifications</div>
+                    <div v-else class="notif-list">
+                      <div
+                        class="notif-item"
+                        :class="{ unread: !n.read }"
+                        v-for="n in notifications"
+                        :key="n.id"
+                        @click="openNotif(n)"
+                      >
+                        <div class="notif-actor">👤 {{ n.actorUsername }}</div>
+                        <div class="notif-action">{{ n.type === 'like' ? '👍 liked your review' : '💬 replied to your review' }}</div>
+                        <div class="notif-quote" v-if="n.type === 'reply' && n.parentText">"{{ n.parentText }}"</div>
+                        <div class="notif-text">{{ n.text }}</div>
+                        <div class="notif-meta">
+                          <span class="notif-movie">{{ movieName(n.movieId) }}</span>
+                          <span class="notif-time">{{ formatTime(n.createdAt) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </transition>
+            </div>
+            <button class="auth-btn ghost" @click="goHistory">🕘 History</button>
+            <button class="auth-btn ghost" @click="goFavorites">❤ My Watchlist</button>
+            <button class="auth-btn ghost" v-if="isAdmin" @click="goAdmin">🛠 Admin</button>
+            <button class="auth-btn ghost" @click="logout">Log out</button>
+          </template>
+          <template v-else>
+            <button class="auth-btn ghost" @click="openAuth('login')">Log in</button>
+            <button class="auth-btn" @click="openAuth('register')">Sign up</button>
+          </template>
+        </div>
+      </header>
+
+      <div v-if="view === 'home'">
+      <nav class="tabs">
+        <button class="tab" :class="{ active: tab === 'recommend' }" @click="tab = 'recommend'">🎬 Recommendations</button>
+        <button class="tab" :class="{ active: tab === 'boxoffice' }" @click="tab = 'boxoffice'">🌍 Global Box Office</button>
+        <button class="tab" :class="{ active: tab === 'nowplaying' }" @click="tab = 'nowplaying'">🇸🇬 Now Playing</button>
+        <button class="tab" v-if="user" @click="goAi">🤖 AI Assistant</button>
+      </nav>
+
+      <div v-if="tab === 'recommend'">
+      <div class="search-box">
+        <input
+          v-model="keyword"
+          type="text"
+          placeholder="Search by title / keyword, e.g. &quot;Sci-Fi&quot;, &quot;Nolan&quot;…"
+        />
+      </div>
+
+      <div class="chips">
+        <div
+          class="chip"
+          :class="{ active: category === 'All' }"
+          @click="category = 'All'"
+        >All</div>
+        <div
+          v-for="c in categories"
+          :key="c"
+          class="chip"
+          :class="{ active: category === c }"
+          @click="category = c"
+        >{{ c }}</div>
+      </div>
+
+      <div class="meta">
+        <div class="left">
+          <span>{{ filteredMovies.length }} movies</span>
+          <span v-if="category !== 'All'">Category: {{ category }}</span>
+        </div>
+        <div class="sort">
+          <label for="sort">Sort</label>
+          <select id="sort" v-model="sort">
+            <option value="default">Default</option>
+            <option value="rating-desc">Rating: High to Low</option>
+            <option value="rating-asc">Rating: Low to High</option>
+            <option value="year-desc">Year: Newest First</option>
+          </select>
+        </div>
+      </div>
+
+      <transition-group name="fade" tag="div" class="grid">
+        <div class="card" v-for="m in filteredMovies" :key="m.id" @click="open(m)">
+          <div class="poster">
+            <img
+              v-if="!m.imgError"
+              :src="m.poster"
+              :alt="m.name"
+              loading="lazy"
+              @error="m.imgError = true"
+            />
+            <div v-else class="fallback">{{ m.name }}</div>
+            <span class="badge">{{ m.category }}</span>
+            <span class="rating">{{ ratingLabel(m) }}</span>
+          </div>
+          <div class="info">
+            <div class="name">{{ m.name }}</div>
+            <div class="sub">
+              <span>{{ m.year }}</span>
+              <span>·</span>
+              <span>{{ m.director }}</span>
+            </div>
+          </div>
+        </div>
+      </transition-group>
+
+      <div class="empty" v-if="filteredMovies.length === 0">
+        <div class="big">🍿</div>
+        <div>No movies match your search. Try a different keyword.</div>
+      </div>
+      </div>
+
+      <div v-else-if="tab === 'boxoffice'" class="boxoffice">
+        <div class="bo-head">
+          <div class="bo-title">
+            <h2>Global Box Office</h2>
+            <span class="bo-time" v-if="box.updatedAt">Updated {{ box.updatedAt }}</span>
+          </div>
+          <button class="refresh" @click="fetchBoxOffice" :disabled="box.loading">
+            {{ box.loading ? 'Loading…' : '↻ Refresh' }}
+          </button>
+        </div>
+
+        <div class="bo-loading" v-if="box.loading && !box.list.length">
+          <div class="big">🎬</div>
+          <div>Loading global box office data…</div>
+        </div>
+
+        <div class="bo-error" v-else-if="box.needKey">
+          <div class="big">🔑</div>
+          <div>TMDB API key required</div>
+          <div class="bo-key-help">
+            Open <code>index.html</code>, find the <code>TMDB_API_KEY</code> constant,
+            paste the free API key (v3) from <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">themoviedb.org</a>
+            , then refresh the page.
+          </div>
+          <button class="retry" @click="fetchBoxOffice">Re-check</button>
+        </div>
+
+        <div class="bo-error" v-else-if="box.error && !box.list.length">
+          <div class="big">📡</div>
+          <div>{{ box.error }}</div>
+          <button class="retry" @click="fetchBoxOffice">Retry</button>
+        </div>
+
+        <div v-else>
+          <div class="bo-note" v-if="box.error">⚠️ {{ box.error }} (showing last successful data)</div>
+          <ol class="bo-list">
+            <li class="bo-item" v-for="(m, i) in box.list" :key="m.id" role="button" tabindex="0" @click="openFromBox(m)" @keydown.enter="openFromBox(m)">
+              <div class="bo-rank" :class="'r' + (i + 1)">{{ i + 1 }}</div>
+              <div class="bo-poster">
+                <img v-if="m.poster && !m.imgError" :src="m.poster" :alt="m.title" loading="lazy" @error="m.imgError = true" />
+                <div v-else class="bo-poster-fb">{{ m.title.slice(0, 2) }}</div>
+              </div>
+              <div class="bo-main">
+                <div class="bo-name">{{ m.title }}</div>
+                <div class="bo-sub">{{ m.year }} · ★ {{ m.rating }}</div>
+              </div>
+              <div class="bo-metric">
+                <div class="bo-value">{{ formatRevenue(m.revenue) }}</div>
+                <div class="bo-label">Worldwide gross</div>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <p class="bo-source">Source: The Movie Database (TMDB) · sorted by worldwide gross</p>
+      </div>
+
+      <div v-else class="nowplaying">
+        <div class="bo-head">
+          <div class="bo-title">
+            <h2>🇸🇬 Now Playing in Singapore</h2>
+            <span class="bo-time" v-if="np.updatedAt">Updated {{ np.updatedAt }}</span>
+          </div>
+          <button class="refresh" @click="fetchNowPlaying" :disabled="np.loading">
+            {{ np.loading ? 'Loading…' : '↻ Refresh' }}
+          </button>
+        </div>
+
+        <div class="bo-loading" v-if="np.loading && !np.list.length">
+          <div class="big">🎬</div>
+          <div>Loading now playing data…</div>
+        </div>
+
+        <div class="bo-error" v-else-if="np.error && !np.list.length">
+          <div class="big">📡</div>
+          <div>{{ np.error }}</div>
+          <button class="retry" @click="fetchNowPlaying">Retry</button>
+        </div>
+
+        <div v-else>
+          <div class="bo-note" v-if="np.error">⚠️ {{ np.error }} (showing last successful data)</div>
+          <div class="np-grid">
+            <div class="np-card" v-for="m in np.list" :key="m.id">
+              <div class="np-poster">
+                <img v-if="m.poster && !m.imgError" :src="m.poster" :alt="m.title" loading="lazy" @error="m.imgError = true" />
+                <div v-else class="np-poster-fb">{{ m.title.slice(0, 2) }}</div>
+                <span class="np-rating">★ {{ m.rating }}</span>
+              </div>
+              <div class="np-info">
+                <div class="np-name">{{ m.title }}</div>
+                <div class="np-sub" v-if="m.originalTitle && m.originalTitle !== m.title">{{ m.originalTitle }}</div>
+                <div class="np-sub">{{ m.year }} released</div>
+                <div class="np-desc" v-if="m.overview">{{ m.overview }}</div>
+                <a class="np-ticket" :href="m.ticketUrl" target="_blank" rel="noopener noreferrer">🎫 Tickets</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="bo-source">Source: The Movie Database (TMDB) · now playing in Singapore cinemas</p>
+      </div>
+      </div>
+
+      <div v-else-if="view === 'detail'" class="detail-page">
+        <button class="back" @click="goHome">← Back to home</button>
+        <template v-if="detailMovie">
+          <div class="detail-hero">
+            <div class="detail-poster">
+              <img
+                v-if="!detailMovie.imgError"
+                :src="detailMovie.poster"
+                :alt="detailMovie.name"
+                @error="detailMovie.imgError = true"
+              />
+              <div v-else class="fallback">{{ detailMovie.name }}</div>
+            </div>
+            <div class="detail-info">
+              <div class="detail-title-row">
+                <h2>{{ detailMovie.name }}</h2>
+                <button v-if="isAdmin" class="edit-btn" @click="openEdit">✏ Edit</button>
+              </div>
+              <div class="tags">
+                <span class="tag rate">{{ detailRatingLabel }}</span>
+                <span class="tag">{{ detailMovie.year }}</span>
+                <span class="tag">{{ detailMovie.category }}</span>
+              </div>
+              <p class="desc">{{ detailMovie.description }}</p>
+              <div class="field">
+                <div class="k">Director</div>
+                <div class="v">{{ detailMovie.director }}</div>
+              </div>
+              <div class="field">
+                <div class="k">Genre</div>
+                <div class="v">{{ detailMovie.category }}</div>
+              </div>
+
+              <div class="actions">
+                <button class="fav-btn" :class="{ on: detailData.myFavorite }" @click="toggleFavorite">
+                  {{ detailData.myFavorite ? '♥ In Watchlist' : '♡ Add to Watchlist' }}
+                  <span v-if="detailData.favorites">({{ detailData.favorites }})</span>
+                </button>
+                <button class="ai-btn" @click="askAiAbout(detailMovie)">🤖 Ask AI</button>
+                <div class="rate-box" v-if="user">
+                  <span class="rate-label">My rating</span>
+                  <div class="stars">
+                    <button
+                      v-for="n in 10"
+                      :key="n"
+                      class="star"
+                      :class="{ on: n <= detailData.myRating }"
+                      :title="n + ' / 10'"
+                      :aria-label="n + ' / 10'"
+                      @click="rate(n)"
+                    >★</button>
+                  </div>
+                  <button v-if="detailData.myRating" class="clear-rate" @click="rate(0)">Cancel</button>
+                </div>
+                <div class="avg-rate" v-if="detailData.ratingCount">
+                  Average <b>{{ detailData.avgRating }}</b> · {{ detailData.ratingCount }} ratings
+                </div>
+                <div class="avg-rate" v-else>No ratings yet</div>
+              </div>
+              <div class="ext-links" v-if="detailLinks.length">
+                <span class="ext-label">Other platforms</span>
+                <a
+                  v-for="s in detailLinks"
+                  :key="s.key"
+                  class="ext-link"
+                  :href="s.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ s.label }}</a>
+              </div>
+              <div class="detail-error" v-if="detailError">{{ detailError }}</div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3>📊 Box Office</h3>
+            <div class="bo-lock" v-if="boxOffice.loading">
+              <div class="big">🎬</div>
+              <div>Loading box office data…</div>
+            </div>
+            <div class="bo-lock" v-else-if="boxOffice.error">
+              <div class="big">📡</div>
+              <div>{{ boxOffice.error }}</div>
+              <div style="margin-top: 12px;"><button class="retry" @click="loadBoxOffice">Retry</button></div>
+            </div>
+            <div v-else>
+              <div class="bo-cards">
+                <div class="bo-card">
+                  <div class="v">{{ formatUsd(boxOffice.revenue) }}</div>
+                  <div class="l">Worldwide gross</div>
+                </div>
+                <div class="bo-card">
+                  <div class="v">{{ formatUsd(boxOffice.budget) }}</div>
+                  <div class="l">Budget</div>
+                </div>
+                <div class="bo-card" v-if="boxOffice.releaseDate">
+                  <div class="v">{{ boxOffice.releaseDate }}</div>
+                  <div class="l">Release date</div>
+                </div>
+                <div class="bo-card" v-if="boxOffice.runtime">
+                  <div class="v">{{ boxOffice.runtime }} min</div>
+                  <div class="l">Runtime</div>
+                </div>
+              </div>
+              <p class="bo-source">Source: The Movie Database (TMDB)</p>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3>💬 Reviews ({{ commentCount }})</h3>
+            <div class="login-gate" v-if="!user">
+              <span>Log in to post a review</span>
+              <button class="auth-btn ghost" @click="openAuth('login')">Log in</button>
+              <button class="auth-btn" @click="openAuth('register')">Sign up</button>
+            </div>
+            <div class="comment-form" v-else>
+              <textarea
+                class="comment-input"
+                v-model="commentText"
+                maxlength="500"
+                placeholder="Share your thoughts… (max 500 characters)"
+              ></textarea>
+              <button
+                class="comment-submit"
+                :disabled="commentSubmitting || !commentText.trim()"
+                @click="submitComment"
+              >{{ commentSubmitting ? 'Posting…' : 'Post review' }}</button>
+            </div>
+            <div class="comment-list" v-if="detailData.comments.length">
+              <div
+                class="comment"
+                v-for="c in detailData.comments"
+                :key="c.id"
+                :id="'comment-' + c.id"
+                :class="{ nested: c.depth > 0, highlight: highlightCommentId === c.id }"
+                :style="{ marginLeft: Math.min(c.depth || 0, 1) * 18 + 'px' }"
+              >
+                <div class="head">
+                  <span class="who">
+                    <img v-if="c.avatar && !c.avatarError" class="u-avatar" :src="c.avatar" :alt="c.username" @error="c.avatarError = true" />
+                    <span v-else class="u-avatar u-avatar-fb">{{ (c.username || "?").charAt(0) }}</span>
+                    <span>{{ c.username }}</span>
+                    <span class="u-sig" v-if="c.signature">{{ c.signature }}</span>
+                  </span>
+                  <span class="when">{{ formatTime(c.createdAt) }}</span>
+                  <div class="comment-actions">
+                    <button
+                      class="comment-like"
+                      :class="{ on: c.myLike }"
+                      :title="c.myLike ? 'Unlike' : 'Like'"
+                      @click="toggleLike(c)"
+                    >👍 <span>{{ c.likeCount || 'Like' }}</span></button>
+                    <button class="comment-reply" @click="startReply(c)">Reply</button>
+					<!--Remove comments, only show if the user is administrator or the comment is belong to it-->
+                    <button
+                      v-if="user && (c.username === user || isAdmin)"
+                      class="comment-delete"
+                      :disabled="deletingComments.has(c.id)"
+                      @click="deleteComment(c)"
+                    >{{ deletingComments.has(c.id) ? 'Deleting…' : 'Delete' }}</button>
+                  </div>
+                </div>
+                <div class="reply-to" v-if="c.replyToUsername">↩ Reply to @{{ c.replyToUsername }}</div>
+                <div class="body">{{ c.text }}</div>
+
+                <div class="reply-form" v-if="replyTarget && replyTarget.id === c.id">
+                  <textarea
+                    class="reply-input"
+                    v-model="replyText"
+                    maxlength="500"
+                    :placeholder="'Reply to @' + c.username + ' … (max 500 characters)'"
+                  ></textarea>
+                  <div class="reply-actions">
+                    <button class="comment-reply ghost" @click="startReply(c)">Cancel</button>
+                    <button
+                      class="reply-submit"
+                      :disabled="replySubmitting || !replyText.trim()"
+                      @click="submitReply"
+                    >{{ replySubmitting ? 'Replying…' : 'Post reply' }}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="comment-empty" v-else-if="!detailData.loading">No reviews yet. Be the first!</div>
+          </div>
+        </template>
+      </div>
+
+      <div v-else-if="view === 'favorites'" class="favorites-page">
+        <button class="back" @click="goHome">← Back to home</button>
+        <div class="fav-head">
+          <h2>❤ My Watchlist</h2>
+          <span class="count" v-if="favorites.length">{{ favorites.length }} movies</span>
+        </div>
+
+        <div class="login-gate" v-if="!user">
+          <span>Log in to view your watchlist</span>
+          <button class="auth-btn ghost" @click="openAuth('login')">Log in</button>
+          <button class="auth-btn" @click="openAuth('register')">Sign up</button>
+        </div>
+        <div class="empty" v-else-if="favoritesLoading">
+          <div class="big">🎬</div>
+          <div>Loading watchlist…</div>
+        </div>
+        <div class="empty" v-else-if="favorites.length === 0">
+          <div class="big">💔</div>
+          <div>Your watchlist is empty. Browse the homepage.</div>
+          <button class="auth-btn" style="margin-top: 16px;" @click="goHome">Browse movies</button>
+        </div>
+        <div v-else class="grid">
+          <div class="card" v-for="m in favorites" :key="m.id" @click="open(m)">
+            <div class="poster">
+              <img v-if="!m.imgError" :src="m.poster" :alt="m.name" loading="lazy" @error="m.imgError = true" />
+              <div v-else class="fallback">{{ m.name }}</div>
+              <span class="badge">{{ m.category }}</span>
+              <span class="rating">{{ ratingLabel(m) }}</span>
+            </div>
+            <div class="info">
+              <div class="name">{{ m.name }}</div>
+              <div class="sub">
+                <span>{{ m.year }}</span>
+                <span>·</span>
+                <span>{{ m.director }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="view === 'history'" class="history-page">
+        <button class="back" @click="goHome">← Back to home</button>
+        <div class="fav-head">
+          <h2>🕘 History</h2>
+          <span class="count" v-if="history.length">{{ history.length }} movies</span>
+        </div>
+
+        <div class="login-gate" v-if="!user">
+          <span>Log in to view your review history</span>
+          <button class="auth-btn ghost" @click="openAuth('login')">Log in</button>
+          <button class="auth-btn" @click="openAuth('register')">Sign up</button>
+        </div>
+        <div class="empty" v-else-if="historyLoading">
+          <div class="big">🎬</div>
+          <div>Loading history…</div>
+        </div>
+        <div class="empty" v-else-if="history.length === 0">
+          <div class="big">💬</div>
+          <div>You haven't written any reviews yet. Go watch a movie and share your thoughts.</div>
+          <button class="auth-btn" style="margin-top: 16px;" @click="goHome">Browse movies</button>
+        </div>
+        <div v-else class="history-list">
+          <div class="history-item" v-for="m in history" :key="m.id">
+            <div class="history-movie" @click="open(m)">
+              <div class="history-poster">
+                <img v-if="!m.imgError" :src="m.poster" :alt="m.name" loading="lazy" @error="m.imgError = true" />
+                <div v-else class="history-poster-fb">{{ m.name }}</div>
+              </div>
+              <div class="history-meta">
+                <div class="history-name">{{ m.name }}</div>
+                <div class="history-sub">
+                  <span>{{ m.year }}</span>
+                  <span>·</span>
+                  <span>{{ m.director }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="history-comments">
+              <div class="history-comment" v-for="c in m.comments" :key="c.id">
+                <div class="history-comment-head">
+                  <span class="when">{{ c.parentId ? 'Reply' : 'Review' }} · {{ formatTime(c.createdAt) }}</span>
+                  <span class="history-comment-rate" v-if="m.myRating">★ {{ m.myRating }}</span>
+                </div>
+                <div class="history-comment-text">{{ c.text }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="view === 'ai'" class="ai-page">
+        <button class="back" @click="goHome">← Back to home</button>
+        <div class="fav-head">
+          <h2>🤖 AI Movie Assistant</h2>
+          <span class="count">Log in to ask the AI movie questions</span>
+        </div>
+
+        <div class="login-gate" v-if="!user">
+          <span>Log in to use the AI assistant</span>
+          <button class="auth-btn ghost" @click="openAuth('login')">Log in</button>
+          <button class="auth-btn" @click="openAuth('register')">Sign up</button>
+        </div>
+
+        <div v-else class="ai-chat">
+          <div class="ai-messages" ref="aiMessages">
+            <div class="ai-msg ai-assistant">
+              <div class="ai-avatar">🤖</div>
+              <div class="ai-bubble">Hi, I'm Yingjian's AI movie assistant. Ask me things like "recommend a sci-fi film" or "which movie is rated highest", or any movie-related question.</div>
+            </div>
+            <div
+              class="ai-msg"
+              :class="m.role === 'assistant' ? 'ai-assistant' : 'ai-user'"
+              v-for="(m, i) in aiMessages"
+              :key="i"
+            >
+              <div class="ai-avatar">{{ m.role === 'assistant' ? '🤖' : '👤' }}</div>
+              <div class="ai-bubble">{{ m.content }}</div>
+            </div>
+            <div class="ai-msg ai-assistant" v-if="aiLoading">
+              <div class="ai-avatar">🤖</div>
+              <div class="ai-bubble ai-typing">Thinking…</div>
+            </div>
+          </div>
+
+          <div class="ai-quick" v-if="!aiMessages.length">
+            <button v-for="q in aiQuickQuestions" :key="q" class="ai-quick-btn" @click="quickAsk(q)">{{ q }}</button>
+          </div>
+
+          <div class="ai-input-row">
+            <input
+              class="ai-input"
+              v-model="aiInput"
+              type="text"
+              maxlength="2000"
+              placeholder="Ask a movie question, e.g. &quot;recommend a thriller&quot;…"
+              @keydown.enter.prevent="sendAi"
+            />
+            <button class="ai-send" :disabled="aiLoading || !aiInput.trim()" @click="sendAi">
+              {{ aiLoading ? 'Sending…' : 'Send' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="view === 'admin'" class="admin-page">
+        <button class="back" @click="goHome">← Back to home</button>
+        <div class="fav-head">
+          <h2>🛠 User Management</h2>
+          <span class="count" v-if="adminUsers.length">{{ adminUsers.length }} users</span>
+        </div>
+
+        <div class="login-gate" v-if="!user || !isAdmin">
+          <span>Admin access required</span>
+          <button class="auth-btn ghost" @click="openAuth('login')">Log in</button>
+        </div>
+        <div class="empty" v-else-if="adminLoading">
+          <div class="big">🎬</div>
+          <div>Loading users…</div>
+        </div>
+        <div v-else class="admin-list">
+          <div class="admin-user" v-for="u in adminUsers" :key="u.id">
+            <div class="admin-user-main">
+              <div class="admin-user-name">
+                👤 {{ u.username }}
+                <span class="admin-badge" v-if="u.isAdmin">Admin</span>
+              </div>
+              <div class="admin-user-meta">Joined {{ formatTime(u.createdAt) }} · {{ u.commentCount }} reviews</div>
+            </div>
+            <button class="admin-delete" v-if="!u.isAdmin && u.username !== user" @click="deleteUser(u)">Delete</button> 
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <transition name="pop">
+      <div class="overlay" v-if="authOpen" @click.self="closeAuth">
+        <div class="modal auth-modal">
+          <button class="close" @click="closeAuth" aria-label="Close">✕</button>
+          <div class="auth-body">
+            <div class="auth-tabs">
+              <button class="tab" :class="{ active: authMode === 'login' }" @click="switchAuth('login')">Log in</button>
+              <button class="tab" :class="{ active: authMode === 'register' }" @click="switchAuth('register')">Sign up</button>
+            </div>
+            <form @submit.prevent="submitAuth">
+              <label class="auth-label" for="auth-username">Username</label>
+              <input id="auth-username" class="auth-input" v-model.trim="authForm.username" type="text" autocomplete="username" placeholder="Please enter a username" />
+
+              <label class="auth-label" for="auth-password">Password</label>
+              <input id="auth-password" class="auth-input" v-model="authForm.password" type="password" :autocomplete="authMode === 'login' ? 'current-password' : 'new-password'" :placeholder="authMode === 'register' ? 'At least 6 characters' : 'Enter password'" />
+
+              <template v-if="authMode === 'register'">
+                <label class="auth-label" for="auth-confirm">Confirm password</label>
+                <input id="auth-confirm" class="auth-input" v-model="authForm.confirm" type="password" autocomplete="new-password" placeholder="Re-enter password" />
+              </template>
+
+              <div class="auth-error" v-if="authError">{{ authError }}</div>
+              <button class="auth-submit" type="submit" :disabled="authLoading">
+                {{ authLoading ? 'Working…' : (authMode === 'login' ? 'Log in' : 'Sign up') }}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <transition name="pop">
+      <div class="overlay" v-if="editOpen" @click.self="closeEdit">
+        <div class="modal edit-modal">
+          <button class="close" @click="closeEdit" aria-label="Close">✕</button>
+          <div class="edit-body">
+            <h2>✏ Edit Movie</h2>
+            <form @submit.prevent="saveEdit">
+              <div class="edit-grid">
+                <div class="edit-field">
+                  <label class="auth-label" for="edit-name">Movie title</label>
+                  <input id="edit-name" class="auth-input" v-model.trim="editForm.name" type="text" placeholder="Movie title" />
+                </div>
+                <div class="edit-field">
+                  <label class="auth-label" for="edit-category">Genre</label>
+                  <input id="edit-category" class="auth-input" v-model.trim="editForm.category" type="text" placeholder="e.g. Sci-Fi / Drama" />
+                </div>
+                <div class="edit-field">
+                  <label class="auth-label" for="edit-year">Year</label>
+                  <input id="edit-year" class="auth-input" v-model.trim="editForm.year" type="number" min="1888" max="2100" placeholder="1994" />
+                </div>
+                <div class="edit-field">
+                  <label class="auth-label" for="edit-director">Director</label>
+                  <input id="edit-director" class="auth-input" v-model.trim="editForm.director" type="text" placeholder="Director" />
+                </div>
+                <div class="edit-field">
+                  <label class="auth-label" for="edit-tmdb">TMDB ID (for box office, optional)</label>
+                  <input id="edit-tmdb" class="auth-input" v-model.trim="editForm.tmdbId" type="number" min="1" placeholder="278" />
+                </div>
+                <div class="edit-field full">
+                  <label class="auth-label" for="edit-poster">Poster URL</label>
+                  <input id="edit-poster" class="auth-input" v-model.trim="editForm.poster" type="text" placeholder="https://image.tmdb.org/t/p/w500/..." />
+                </div>
+                <div class="edit-field full">
+                  <label class="auth-label" for="edit-desc">Description</label>
+                  <textarea id="edit-desc" class="auth-input edit-textarea" v-model="editForm.description" placeholder="Movie description"></textarea>
+                </div>
+              </div>
+
+              <div class="edit-section">Platform links</div>
+              <div class="edit-grid">
+                <div class="edit-field">
+                  <label class="auth-label" for="edit-douban">Douban ID</label>
+                  <input id="edit-douban" class="auth-input" v-model.trim="editForm.links.douban" type="text" placeholder="1292052" />
+                </div>
+                <div class="edit-field">
+                  <label class="auth-label" for="edit-imdb">IMDb ID</label>
+                  <input id="edit-imdb" class="auth-input" v-model.trim="editForm.links.imdb" type="text" placeholder="tt0111161" />
+                </div>
+                <div class="edit-field">
+                  <label class="auth-label" for="edit-rt">Rotten Tomatoes slug</label>
+                  <input id="edit-rt" class="auth-input" v-model.trim="editForm.links.rt" type="text" placeholder="the_shawshank_redemption" />
+                </div>
+                <div class="edit-field">
+                  <label class="auth-label" for="edit-letterboxd">Letterboxd slug</label>
+                  <input id="edit-letterboxd" class="auth-input" v-model.trim="editForm.links.letterboxd" type="text" placeholder="the-shawshank-redemption" />
+                </div>
+              </div>
+
+              <div class="edit-section">Custom links</div>
+              <div class="custom-links">
+                <div class="custom-link-row" v-for="(c, i) in editForm.custom" :key="i">
+                  <input class="auth-input" v-model.trim="c.label" type="text" placeholder="Label, e.g. Bilibili" />
+                  <input class="auth-input" v-model.trim="c.url" type="text" placeholder="https://..." />
+                  <button type="button" class="remove-link" @click="removeCustomLink(i)" aria-label="Delete">✕</button>
+                </div>
+                <button type="button" class="add-link" @click="addCustomLink">+ + Add custom link</button>
+              </div>
+
+              <div class="auth-error" v-if="editError">{{ editError }}</div>
+              <div class="edit-actions">
+                <button type="button" class="auth-btn ghost" @click="closeEdit">Cancel</button>
+                <button class="auth-submit" type="submit" :disabled="editLoading">{{ editLoading ? 'Saving…' : 'Save' }}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+
+    // Box office chart data source: the official TMDB API (sorted by worldwide gross).
+    // Get a free API key (v3): https://www.themoviedb.org/settings/api
+    // Paste the key into the quotes below to load the box office chart.
+    const TMDB_API_KEY = "e44af377a81b2e6ac9f798ca5e8b7f94";
+
+    const movies = window.YJ_MOVIES;
+
+    createApp({
+      data() {
+        return {
+          keyword: "",
+          category: "All",
+          sort: "default",
+          movies,
+          movieRatings: {},
+          view: "home",
+          favorites: [],
+          favoritesLoading: false,
+          history: [],
+          historyLoading: false,
+          detailMovie: null,
+          detailData: { loading: false, comments: [], avgRating: 0, ratingCount: 0, favorites: 0, myRating: 0, myFavorite: false },
+          commentText: "",
+          commentSubmitting: false,
+          deletingComments: new Set(),
+          replyTarget: null,
+          replyText: "",
+          replySubmitting: false,
+          detailError: "",
+          extSites: [
+            { key: "douban", label: "Douban" },
+            { key: "imdb", label: "IMDb" },
+            { key: "rt", label: "Rotten Tomatoes" },
+            { key: "letterboxd", label: "Letterboxd" },
+          ],
+          boxOffice: { loading: false, error: "", revenue: 0, budget: 0, releaseDate: "", runtime: 0 },
+          tab: "recommend",
+          box: { loading: true, error: "", needKey: false, updatedAt: "", list: [] },
+          np: { loading: true, error: "", updatedAt: "", list: [] },
+          user: null,
+          isAdmin: false,
+          myAvatar: "",
+          adminUsers: [],
+          adminLoading: false,
+          notifications: [],
+          notifUnread: 0,
+          notifOpen: false,
+          notifLoading: false,
+          pendingCommentId: null,
+          highlightCommentId: null,
+          authOpen: false,
+          authMode: "login",
+          authForm: { username: "", password: "", confirm: "" },
+          authLoading: false,
+          authError: "",
+          editOpen: false,
+          editForm: {
+            name: "", category: "", year: "", director: "",
+            description: "", poster: "", tmdbId: "",
+            links: { douban: "", imdb: "", rt: "", letterboxd: "" },
+            custom: [],
+          },
+          editLoading: false,
+          editError: "",
+          aiMessages: [],
+          aiInput: "",
+          aiLoading: false,
+          aiPending: "",
+          aiQuickQuestions: [
+            "Recommend a sci-fi film",
+            "Which movie is rated highest?",
+            "Any good animated movies?",
+            "How are Nolan's films?",
+          ],
+        };
+      },
+      computed: {
+        categories() {
+          return [...new Set(this.movies.map((m) => m.category))];
+        },
+        filteredMovies() {
+          const kw = this.keyword.trim().toLowerCase();//Remove spaces from the input and convert it to lowercase.
+          let list = this.movies.filter((m) => {
+            const inCategory =
+              this.category === "All" || m.category === this.category; //Get the category selected by the user
+            const inText =
+              !kw ||
+              m.name.toLowerCase().includes(kw) || //Search by movie title
+              m.director.toLowerCase().includes(kw) || //Search by director's name
+              m.category.toLowerCase().includes(kw) || //Search by category
+              m.description.toLowerCase().includes(kw); //Search by description
+            return inCategory && inText; 
+          });  
+		  //Sort according to the selected sort method
+          if (this.sort === "rating-desc") {
+            list = [...list].sort((a, b) => this.realRating(b) - this.realRating(a));
+          } else if (this.sort === "rating-asc") {
+            list = [...list].sort((a, b) => this.realRating(a) - this.realRating(b));
+          } else if (this.sort === "year-desc") {
+            list = [...list].sort((a, b) => b.year - a.year);
+          }
+          return list;
+        },
+        detailLinks() {
+          const m = this.detailMovie;
+          if (!m || !m.links) return [];
+          const builtin = this.extSites
+            .map((s) => ({ key: s.key, label: s.label, url: this.extUrl(m, s.key) }))
+            .filter((x) => x.url);
+          const custom = (m.links.custom || [])
+            .filter((c) => c && c.label && c.url)
+            .map((c, i) => ({ key: "custom-" + i, label: c.label, url: c.url }));
+          return builtin.concat(custom);
+        },
+        detailRatingLabel() {
+          // The detail page badge shows the real in-site average rating (from user ratings),
+          // not the admin-edited rating stored on the movie record.
+          if (this.detailData.ratingCount > 0) {
+            return "★ " + Number(this.detailData.avgRating).toFixed(1);
+          }
+          return "No ratings yet";
+        },
+      },
+      commentCount() {
+        return this.detailData.comments.length;
+      },
+      methods: {
+        formatRevenue(v) {
+          if (!v) return "—";
+          const usd = Number(v);
+          if (Number.isNaN(usd)) return "—";
+          return (usd / 1e8).toFixed(2).replace(/\.?0+$/, "") + " hundred million USD";
+        },
+        openFromBox(m) {
+          const local = m && m.movieId != null ? this.movies.find((x) => x.id === m.movieId) : null;
+          if (local) { this.open(local); return; }
+          if (m && m.id) window.open("https://www.themoviedb.org/movie/" + m.id, "_blank", "noopener");
+        },
+        async fetchBoxOffice() {
+          this.box.loading = true;
+          this.box.error = "";
+          this.box.needKey = false;
+          if (!TMDB_API_KEY) {
+            this.box.needKey = true;
+            this.box.loading = false;
+            return;
+          }
+          try {
+            const base = "https://api.themoviedb.org/3";
+            const key = "api_key=" + encodeURIComponent(TMDB_API_KEY);
+
+            // 1) Get the chart sorted by revenue (note: the discover list endpoint doesn't return the revenue field)
+            const listRes = await fetch(
+              base + "/discover/movie?sort_by=revenue.desc&page=1&include_adult=false&language=en&" + key
+            );
+            if (!listRes.ok) throw new Error("HTTP " + listRes.status);
+            const listJson = await listRes.json();
+            const top = (listJson.results || []).slice(0, 20);
+            if (!top.length) throw new Error("No data from API");
+
+            // 2) Fetch each movie's details to get the cumulative revenue
+            const details = await Promise.all(
+              top.map((m) =>
+                fetch(base + "/movie/" + m.id + "?language=en&" + key)
+                  .then((r) => (r.ok ? r.json() : null))
+                  .catch(() => null)
+              )
+            );
+
+            this.box.list = top.map((m, i) => {
+              const d = details[i] || {};
+              const local = this.movies.find((x) => x.tmdbId === m.id);
+              return {
+                id: m.id,
+                movieId: local ? local.id : null,
+                title: m.title || m.original_title || "Unknown",
+                year: m.release_date ? m.release_date.slice(0, 4) : "—",
+                rating: m.vote_average != null ? Number(m.vote_average).toFixed(1) : "—",
+                revenue: d.revenue || 0,
+                poster: m.poster_path
+                  ? "https://image.tmdb.org/t/p/w185" + m.poster_path
+                  : "",
+                imgError: false,
+              };
+            });
+            this.box.updatedAt = new Date().toLocaleString("en");
+          } catch (e) {
+            this.box.error = "Failed to load box office data. Please try again later.";
+          } finally {
+            this.box.loading = false;
+          }
+        },
+        async fetchNowPlaying() {
+          this.np.loading = true;
+          this.np.error = "";
+          if (!TMDB_API_KEY) {
+            this.np.error = "TMDB API key required";
+            this.np.loading = false;
+            return;
+          }
+          try {
+            const base = "https://api.themoviedb.org/3";
+            const key = "api_key=" + encodeURIComponent(TMDB_API_KEY);
+
+            // Now playing in Singapore (TMDB now_playing, region=SG filters by release region)
+            const r = await fetch(
+              base + "/movie/now_playing?region=SG&language=en&page=1&include_adult=false&" + key
+            );
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            const json = await r.json();
+            const list = (json.results || []).map((m) => ({
+              id: m.id,
+              title: m.title || m.original_title || "Unknown",
+              originalTitle: m.original_title || "",
+              year: m.release_date ? m.release_date.slice(0, 4) : "—",
+              rating: m.vote_average != null ? Number(m.vote_average).toFixed(1) : "—",
+              overview: m.overview || "",
+              poster: m.poster_path
+                ? "https://image.tmdb.org/t/p/w342" + m.poster_path
+                : "",
+              imgError: false,
+              ticketUrl: "https://www.google.com/search?q=" + encodeURIComponent((m.title || m.original_title || "") + "movie tickets Singapore"),
+            }));
+            if (!list.length) throw new Error("No data from API");
+            this.np.list = list;
+            this.np.updatedAt = new Date().toLocaleString("en");
+          } catch (e) {
+            this.np.error = "Failed to load now playing data. Please try again later.";
+          } finally {
+            this.np.loading = false;
+          }
+        },
+        formatUsd(v) {
+          if (!v) return "—";
+          const usd = Number(v);
+          if (Number.isNaN(usd)) return "—";
+          if (usd >= 1e8) return (usd / 1e8).toFixed(2).replace(/\.?0+$/, "") + " hundred million USD";
+          return (usd / 1e4).toFixed(1).replace(/\.0$/, "") + " ten thousand USD";
+        },
+        formatTime(iso) {
+          if (!iso) return "";
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return "";
+          const diff = Date.now() - d.getTime();
+          const min = 60e3, hour = 3600e3, day = 86400e3;
+          if (diff < min) return "just now";
+          if (diff < hour) return Math.floor(diff / min) + " min ago";
+          if (diff < day) return Math.floor(diff / hour) + " hr ago";
+          if (diff < 7 * day) return Math.floor(diff / day) + " days ago";
+          const p = (n) => String(n).padStart(2, "0");
+          return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+        },
+        /* ---------- Movie detail page ---------- */
+        open(movie) {
+          if (location.hash === "#/movie/" + movie.id) return;
+          location.hash = "#/movie/" + movie.id;
+        },
+        extUrl(movie, key) {
+          const l = (movie && movie.links) || {};
+          if (!l[key]) return "";
+          switch (key) {
+            case "douban": return "https://movie.douban.com/subject/" + l.douban + "/";
+            case "imdb": return "https://www.imdb.com/title/" + l.imdb + "/";
+            case "rt": return "https://www.rottentomatoes.com/m/" + l.rt;
+            case "letterboxd": return "https://letterboxd.com/film/" + l.letterboxd + "/";
+            default: return "";
+          }
+        },
+        goHome() {
+          if (location.hash) location.hash = "";
+          else this.syncRoute();
+        },
+        goFavorites() {
+          if (!this.user) { this.openAuth("login"); return; }
+          if (location.hash === "#/favorites") return;
+          location.hash = "#/favorites";
+        },
+        goHistory() {
+          if (!this.user) { this.openAuth("login"); return; }
+          if (location.hash === "#/history") return;
+          location.hash = "#/history";
+        },
+        goAdmin() {
+          if (!this.user) { this.openAuth("login"); return; }
+          if (!this.isAdmin) return;
+          if (location.hash === "#/admin") return;
+          location.hash = "#/admin";
+        },
+        async loadFavorites() {
+          if (!this.user) { this.favorites = []; this.favoritesLoading = false; return; }
+          this.favoritesLoading = true;
+          try {
+            const data = await this.api("/me/favorites");
+            const ids = data.favorites || [];
+            this.favorites = ids.map((id) => this.movies.find((x) => x.id === id)).filter(Boolean);
+          } catch (e) {
+            this.favorites = [];
+          } finally {
+            this.favoritesLoading = false;
+          }
+        },
+        async loadHistory() {
+          if (!this.user) { this.history = []; this.historyLoading = false; return; }
+          this.historyLoading = true;
+          try {
+            const data = await this.api("/me/history");
+            const items = data.history || [];
+            this.history = items
+              .map((it) => {
+                const movie = this.movies.find((x) => x.id === it.movieId);
+                if (!movie) return null;
+                return { ...movie, myRating: it.rating, comments: it.comments || [] };
+              })
+              .filter(Boolean);
+          } catch (e) {
+            this.history = [];
+          } finally {
+            this.historyLoading = false;
+          }
+        },
+        async loadAdminUsers() {
+          if (!this.user || !this.isAdmin) { this.adminUsers = []; this.adminLoading = false; return; }
+          this.adminLoading = true;
+          try {
+            const data = await this.api("/admin/users");
+            this.adminUsers = data.users || [];
+          } catch (e) {
+            this.adminUsers = [];
+          } finally {
+            this.adminLoading = false;
+          }
+        },
+        async deleteUser(u) {
+          if (!window.confirm(`Delete user "${u.username}"?\nTheir reviews, replies, ratings, and watchlist will also be deleted. This cannot be undone.`)) return;
+          try {
+            await this.api("/admin/users/" + u.id, { method: "DELETE" });
+            this.adminUsers = this.adminUsers.filter((x) => x.id !== u.id);
+          } catch (e) {
+            window.alert(e && e.message ? e.message : "Failed to delete. Please try again later.");
+          }
+        },
+        async loadMovies() {
+          try {
+            const data = await this.api("/movies");
+            for (const ov of data.movies || []) {
+              const m = this.movies.find((x) => x.id === ov.id);
+              if (!m) continue;
+              if (ov.poster !== m.poster) m.imgError = !ov.poster;
+              Object.assign(m, ov);
+            }
+          } catch (e) {
+            // If fetching admin edits fails, fall back to the built-in frontend data (silently)
+          }
+        },
+        // Fetch all movies' real in-site average ratings for the recommendation cards and rating sort
+        async loadRatings() {
+          try {
+            const data = await this.api("/movies/ratings");
+            this.movieRatings = {};
+            for (const r of data.ratings || []) {
+              this.movieRatings[r.movieId] = { avgRating: r.avgRating, ratingCount: r.ratingCount };
+            }
+          } catch (e) {
+            // Fall back to current data if the fetch fails (silently)
+          }
+        },
+        realRating(m) {
+          const r = this.movieRatings[m.id];
+          return r && r.ratingCount > 0 ? r.avgRating : 0;
+        },
+        ratingLabel(m) {
+          const r = this.movieRatings[m.id];
+          return r && r.ratingCount > 0 ? "★ " + r.avgRating.toFixed(1) : "No ratings yet";
+        },
+        openEdit() {
+          const m = this.detailMovie;
+          if (!m) return;
+          const links = m.links || {};
+          this.editForm = {
+            name: m.name,
+            category: m.category,
+            year: m.year,
+            director: m.director,
+            description: m.description,
+            poster: m.poster || "",
+            tmdbId: m.tmdbId != null ? m.tmdbId : "",
+            links: {
+              douban: links.douban || "",
+              imdb: links.imdb || "",
+              rt: links.rt || "",
+              letterboxd: links.letterboxd || "",
+            },
+            custom: (links.custom || []).map((c) => ({ label: c.label || "", url: c.url || "" })),
+          };
+          this.editError = "";
+          this.editOpen = true;
+          document.body.style.overflow = "hidden";
+        },
+        closeEdit() {
+          this.editOpen = false;
+          this.editError = "";
+          document.body.style.overflow = "";
+        },
+        addCustomLink() {
+          this.editForm.custom.push({ label: "", url: "" });
+        },
+        removeCustomLink(i) {
+          this.editForm.custom.splice(i, 1);
+        },
+        async saveEdit() {
+          const m = this.detailMovie;
+          if (!m) return;
+          const f = this.editForm;
+          if (!String(f.name || "").trim()) { this.editError = "Please enter a movie title"; return; }
+          this.editLoading = true;
+          this.editError = "";
+          try {
+            const links = {
+              douban: String(f.links.douban || "").trim(),
+              imdb: String(f.links.imdb || "").trim(),
+              rt: String(f.links.rt || "").trim(),
+              letterboxd: String(f.links.letterboxd || "").trim(),
+              custom: f.custom
+                .map((c) => ({ label: String((c && c.label) || "").trim(), url: String((c && c.url) || "").trim() }))
+                .filter((c) => c.label || c.url),
+            };
+            const payload = {
+              name: String(f.name || "").trim(),
+              category: String(f.category || "").trim(),
+              year: Number(f.year),
+              director: String(f.director || "").trim(),
+              description: String(f.description || "").trim(),
+              poster: String(f.poster || "").trim(),
+              tmdbId: f.tmdbId === "" || f.tmdbId == null ? null : Number(f.tmdbId),
+              links,
+            };
+            const data = await this.api("/movies/" + m.id, { method: "PUT", body: JSON.stringify(payload) });
+            const ov = data.movie;
+            if (ov.poster !== m.poster) m.imgError = !ov.poster;
+            Object.assign(m, ov);
+            this.closeEdit();
+          } catch (e) {
+            this.editError = e.message;
+          } finally {
+            this.editLoading = false;
+          }
+        },
+        syncRoute() {
+          if (location.hash === "#/favorites") {
+            this.view = "favorites";
+            this.loadFavorites();
+            return;
+          }
+          if (location.hash === "#/history") {
+            this.view = "history";
+            this.loadHistory();
+            return;
+          }
+          if (location.hash === "#/admin") {
+            this.view = "admin";
+            this.loadAdminUsers();
+            return;
+          }
+          if (location.hash === "#/ai") {
+            this.view = "ai";
+            this.flushAiPending();
+            return;
+          }
+          const m = location.hash.match(/^#\/movie\/(\d+)/);
+          if (m) {
+            const id = Number(m[1]);
+            const movie = this.movies.find((x) => x.id === id);
+            if (movie) {
+              this.detailMovie = movie;
+              this.view = "detail";
+              this.detailError = "";
+              this.refreshDetail();
+              return;
+            }
+          }
+          this.view = "home";
+          this.detailMovie = null;
+        },
+        refreshDetail() {
+          this.loadDetail();
+          this.loadBoxOffice();
+        },
+        async loadDetail() {
+          if (!this.detailMovie) return;
+          this.detailData.loading = true;
+          try {
+            this.applySummary(await this.api("/movies/" + this.detailMovie.id));
+          } catch (e) {
+            this.detailData = { loading: false, comments: [], avgRating: 0, ratingCount: 0, favorites: 0, myRating: 0, myFavorite: false };
+            this.detailError = e.message;
+          }
+        },
+        applySummary(data) {
+          if (!data) return;
+          this.detailData.comments = data.comments || [];
+          this.detailData.avgRating = data.avgRating || 0;
+          this.detailData.ratingCount = data.ratingCount || 0;
+          this.detailData.favorites = data.favorites || 0;
+          this.detailData.myRating = data.myRating || 0;
+          this.detailData.myFavorite = !!data.myFavorite;
+          this.detailData.loading = false;
+          if (this.detailMovie && data.avgRating != null) {
+            this.movieRatings[this.detailMovie.id] = { avgRating: data.avgRating, ratingCount: data.ratingCount || 0 };
+          }
+          if (this.pendingCommentId) {
+            const id = this.pendingCommentId;
+            this.pendingCommentId = null;
+            this.$nextTick(() => this.scrollToComment(id));
+          }
+        },
+        async loadBoxOffice() {
+          if (!this.detailMovie || !this.detailMovie.tmdbId) return;
+          this.boxOffice = { loading: true, error: "", revenue: 0, budget: 0, releaseDate: "", runtime: 0 };
+          try {
+            const key = "api_key=" + encodeURIComponent(TMDB_API_KEY);
+            const r = await fetch("https://api.themoviedb.org/3/movie/" + this.detailMovie.tmdbId + "?language=en&" + key);
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            const d = await r.json();
+            this.boxOffice = {
+              loading: false, error: "",
+              revenue: d.revenue || 0,
+              budget: d.budget || 0,
+              releaseDate: d.release_date || "",
+              runtime: d.runtime || 0,
+            };
+          } catch (e) {
+            this.boxOffice = { loading: false, error: "Failed to load box office data", revenue: 0, budget: 0, releaseDate: "", runtime: 0 };
+          }
+        },
+        async toggleFavorite() {
+          if (!this.user) { this.openAuth("login"); return; }
+          this.detailError = "";
+          try {
+            this.applySummary(await this.api("/movies/" + this.detailMovie.id + "/favorite", { method: "POST" }));
+          } catch (e) {
+            this.detailError = e.message;
+          }
+        },
+        async rate(n) {
+          if (!this.user) { this.openAuth("login"); return; }
+          this.detailError = "";
+          try {
+            this.applySummary(await this.api("/movies/" + this.detailMovie.id + "/rating", { method: "POST", body: JSON.stringify({ rating: n }) }));
+          } catch (e) {
+            this.detailError = e.message;
+          }
+        },
+        async submitComment() {
+          const text = this.commentText.trim();
+          if (!text) return;
+          if (!this.user) { this.openAuth("login"); return; }
+          this.commentSubmitting = true;
+          this.detailError = "";
+          try {
+            this.applySummary(await this.api("/movies/" + this.detailMovie.id + "/comments", { method: "POST", body: JSON.stringify({ text }) }));
+            this.commentText = "";
+          } catch (e) {
+            this.detailError = e.message;
+          } finally {
+            this.commentSubmitting = false;
+          }
+        },
+        async deleteComment(c) {
+          if (!this.user || this.deletingComments.has(c.id)) return;//If the user is not logged in or the comment is deleting, exit function
+          this.deletingComments.add(c.id);
+          this.detailError = "";
+		  //Send the request to the backend
+          try {
+            this.applySummary(await this.api(
+              "/movies/" + this.detailMovie.id + "/comments/" + c.id,
+              { method: "DELETE" }
+            ));
+          } catch (e) {
+            this.detailError = e.message;
+          } finally {
+            this.deletingComments.delete(c.id);
+          }
+        },
+        startReply(c) {
+          if (!this.user) { this.openAuth("login"); return; }
+          this.replyTarget = this.replyTarget && this.replyTarget.id === c.id ? null : c;
+          this.replyText = "";
+        },
+        async submitReply() {
+          const c = this.replyTarget;
+          const text = this.replyText.trim();
+          if (!c || !text) return;
+          if (!this.user) { this.openAuth("login"); return; }
+          this.replySubmitting = true;
+          this.detailError = "";
+          try {
+            this.applySummary(await this.api(
+              "/movies/" + this.detailMovie.id + "/comments/" + c.id + "/replies",
+              { method: "POST", body: JSON.stringify({ text }) }
+            ));
+            this.replyTarget = null;
+            this.replyText = "";
+          } catch (e) {
+            this.detailError = e.message;
+          } finally {
+            this.replySubmitting = false;
+          }
+        },
+        async toggleLike(c) {
+          if (!this.user) { this.openAuth("login"); return; }
+          this.detailError = "";
+          try {
+            this.applySummary(await this.api(
+              "/movies/" + this.detailMovie.id + "/comments/" + c.id + "/like",
+              { method: "POST" }
+            ));
+          } catch (e) {
+            this.detailError = e.message;
+          }
+        },
+        /* ---------- Authentication ---------- */
+        getToken() {
+          try { return localStorage.getItem("yj_token"); } catch (e) { return null; }
+        },
+        setToken(token) {
+          try {
+            if (token) localStorage.setItem("yj_token", token);
+            else localStorage.removeItem("yj_token");
+          } catch (e) {}
+        },
+        api(path, opts = {}) {
+          const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+          const token = this.getToken();
+          if (token) headers["Authorization"] = "Bearer " + token;
+          return fetch("/api" + path, Object.assign({}, opts, { headers })).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Request failed. Please try again later.");
+            return data;
+          });
+        },
+        openAuth(mode) {
+          this.authMode = mode;
+          this.authError = "";
+          this.authForm = { username: "", password: "", confirm: "" };
+          this.authOpen = true;
+          document.body.style.overflow = "hidden";
+        },
+        switchAuth(mode) {
+          if (this.authMode === mode) return;
+          this.authMode = mode;
+          this.authError = "";
+          this.authForm.password = "";
+          this.authForm.confirm = "";
+        },
+        closeAuth() {
+          this.authOpen = false;
+          this.authError = "";
+          document.body.style.overflow = "";
+        },
+        async submitAuth() {
+          const username = this.authForm.username.trim();
+          const password = this.authForm.password;
+          if (!username) { this.authError = "Please enter a username"; return; }
+          if (this.authMode === "register" && password.length < 6) { this.authError = "Password must be at least 6 characters"; return; }
+          if (this.authMode === "register" && password !== this.authForm.confirm) { this.authError = "Passwords do not match"; return; }
+
+          this.authLoading = true;
+          this.authError = "";
+          try {
+            const path = this.authMode === "login" ? "/login" : "/register";
+            const data = await this.api(path, {
+              method: "POST",
+              body: JSON.stringify({ username, password }),
+            });
+            this.setToken(data.token);
+            this.user = data.username;
+            this.isAdmin = !!data.isAdmin;
+            this.myAvatar = data.avatar || "";
+            this.closeAuth();
+            this.loadNotifications();
+            if (this.aiPending) { location.hash = "#/ai"; return; }
+            if (this.view === "detail") this.refreshDetail();
+            else if (this.view === "favorites") this.loadFavorites();
+            else if (this.view === "history") this.loadHistory();
+            else if (this.view === "admin") this.loadAdminUsers();
+          } catch (e) {
+            this.authError = e.message;
+          } finally {
+            this.authLoading = false;
+          }
+        },
+        async logout() {
+          try { await this.api("/logout", { method: "POST" }); } catch (e) {}
+          this.setToken(null);
+          this.user = null;
+          this.isAdmin = false;
+          this.myAvatar = "";
+          this.adminUsers = [];
+          this.notifications = [];
+          this.notifUnread = 0;
+          this.notifOpen = false;
+          if (this.view === "detail") { this.detailError = ""; this.refreshDetail(); }
+        },
+        async restoreSession() {
+          if (!this.getToken()) return;
+          try {
+            const data = await this.api("/me");
+            this.user = data.username;
+            this.isAdmin = !!data.isAdmin;
+            this.myAvatar = data.avatar || "";
+            this.loadNotifications();
+          } catch (e) {
+            this.setToken(null);
+            this.user = null;
+            this.isAdmin = false;
+          }
+          if (this.view === "detail") this.refreshDetail();
+          else if (this.view === "favorites") this.loadFavorites();
+          else if (this.view === "history") this.loadHistory();
+          else if (this.view === "admin") this.loadAdminUsers();
+        },
+        /* ---------- AI Q&A ---------- */
+        goAi() {
+          if (!this.user) { this.openAuth("login"); return; }
+          if (location.hash === "#/ai") { this.flushAiPending(); return; }
+          location.hash = "#/ai";
+        },
+        askAiAbout(movie) {
+          if (!movie) return;
+          this.aiPending = "Tell me about \"" + movie.name + "\". Is it worth watching?";
+          this.goAi();
+        },
+        flushAiPending() {
+          if (!this.user || !this.aiPending) return;
+          const q = this.aiPending;
+          this.aiPending = "";
+          this.aiInput = q;
+          this.$nextTick(() => this.sendAi());
+        },
+        sendAi() {
+          const text = this.aiInput.trim();
+          if (!text || this.aiLoading || !this.user) return;
+          this.aiInput = "";
+          this.aiMessages.push({ role: "user", content: text });
+          this.aiLoading = true;
+          this.$nextTick(() => this.scrollAi());
+          this.aiAsk(text);
+        },
+        async aiAsk(question) {
+          try {
+            const history = this.aiMessages
+              .slice(0, -1)
+              .slice(-16)
+              .map((m) => ({ role: m.role, content: m.content }));
+            const movies = this.movies.map((m) => ({
+              name: m.name, year: m.year, rating: m.rating,
+              category: m.category, director: m.director, description: m.description,
+            }));
+            const data = await this.api("/ai/ask", {
+              method: "POST",
+              body: JSON.stringify({ question, history, movies }),
+            });
+            this.aiMessages.push({ role: "assistant", content: data.answer });
+          } catch (e) {
+            this.aiMessages.push({ role: "assistant", content: "Sorry, " + (e && e.message ? e.message : "AI service is temporarily unavailable. Please try again later.") });
+          } finally {
+            this.aiLoading = false;
+            this.$nextTick(() => this.scrollAi());
+          }
+        },
+        quickAsk(q) {
+          if (this.aiLoading) return;
+          this.aiInput = q;
+          this.sendAi();
+        },
+        scrollAi() {
+          const el = this.$refs.aiMessages;
+          if (el) el.scrollTop = el.scrollHeight;
+        },
+        /* ---------- Notifications ---------- */
+        toggleNotif() {
+          if (!this.user) { this.openAuth("login"); return; }
+          this.notifOpen = !this.notifOpen;
+          if (this.notifOpen) this.loadNotifications(true);
+        },
+        async loadNotifications(markRead = false) {
+          if (!this.user) { this.notifications = []; this.notifUnread = 0; return; }
+          this.notifLoading = true;
+          try {
+            const data = await this.api("/notifications");
+            this.notifications = data.notifications || [];
+            this.notifUnread = data.unread || 0;
+            if (markRead && this.notifUnread > 0) {
+              await this.api("/notifications/read", { method: "POST" });
+              this.notifUnread = 0;
+              this.notifications = this.notifications.map((n) => ({ ...n, read: true }));
+            }
+          } catch (e) {
+            // Silently ignore notification fetch failures without affecting other features
+          } finally {
+            this.notifLoading = false;
+          }
+        },
+        movieName(id) {
+          const m = this.movies.find((x) => x.id === id);
+          return m ? m.name : "";
+        },
+        openNotif(n) {
+          this.notifOpen = false;
+          const movie = this.movies.find((m) => m.id === n.movieId);
+          if (!movie) return;
+          if (this.view === "detail" && this.detailMovie && this.detailMovie.id === n.movieId) {
+            this.$nextTick(() => this.scrollToComment(n.commentId));
+          } else {
+            this.pendingCommentId = n.commentId;
+            this.open(movie);
+          }
+        },
+        scrollToComment(id) {
+          if (!id) return;
+          const el = document.getElementById("comment-" + id);
+          if (!el) return;
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          this.highlightCommentId = id;
+          clearTimeout(this._hlTimer);
+          this._hlTimer = setTimeout(() => { this.highlightCommentId = null; }, 2600);
+        },
+        onDocClick(e) {
+          if (this.notifOpen && this.$refs.notifWrap && !this.$refs.notifWrap.contains(e.target)) {
+            this.notifOpen = false;
+          }
+        },
+        onKey(e) {
+          if (e.key === "Escape") {
+            if (this.editOpen) this.closeEdit();
+            else if (this.authOpen) this.closeAuth();
+            else if (this.notifOpen) this.notifOpen = false;
+            else if (this.view === "detail") this.goHome();
+          }
+        },
+      },
+      mounted() {
+        window.addEventListener("keydown", this.onKey);
+        window.addEventListener("hashchange", this.syncRoute);
+        document.addEventListener("click", this.onDocClick);
+        this._notifTimer = setInterval(() => { if (this.user) this.loadNotifications(); }, 30000);
+        this.fetchBoxOffice();
+        this.fetchNowPlaying();
+        this.loadMovies();
+        this.loadRatings();
+        this.restoreSession();
+        this.syncRoute();
+      },
+      beforeUnmount() {
+        window.removeEventListener("keydown", this.onKey);
+        window.removeEventListener("hashchange", this.syncRoute);
+        document.removeEventListener("click", this.onDocClick);
+        if (this._notifTimer) clearInterval(this._notifTimer);
+        if (this._hlTimer) clearTimeout(this._hlTimer);
+      },
+    }).mount("#app");
+  </script>
+</body>
+</html>

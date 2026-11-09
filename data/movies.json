@@ -1,0 +1,38 @@
+{
+  "comments": [
+    {
+      "id": "eb651a25-c537-4d77-bb2e-154d28279afa",
+      "movieId": 1,
+      "userId": "25256b6f-5097-4c0a-8037-455deccc2176",
+      "username": "test",
+      "text": "A  good movie",
+      "createdAt": "2026-09-10T14:04:00.500Z"
+    },
+    {
+      "id": "3c64f5c4-f4d9-402e-9e58-70242b97571d",
+      "movieId": 1,
+      "userId": "48f913f9-e0c4-40d8-ad59-170f75fc60ea",
+      "username": "test2",
+      "text": "Excellent!",
+      "createdAt": "2026-09-10T14:12:54.772Z"
+    },
+    {
+      "id": "3fb9384e-907c-47b3-bf62-a9a363acfaec",
+      "movieId": 1,
+      "parentId": "eb651a25-c537-4d77-bb2e-154d28279afa",
+      "userId": "48f913f9-e0c4-40d8-ad59-170f75fc60ea",
+      "username": "test2",
+      "text": "me too",
+      "createdAt": "2026-09-11T06:08:31.432Z"
+    }
+  ],
+  "ratings": [
+    {
+      "movieId": 1,
+      "userId": "25256b6f-5097-4c0a-8037-455deccc2176",
+      "rating": 5
+    }
+  ],
+  "favorites": [],
+  "likes": []
+}

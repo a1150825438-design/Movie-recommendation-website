@@ -1,0 +1,13 @@
+{
+  "name": "yingjian-movie-recommend",
+  "version": "1.0.0",
+  "description": "影荐 —— 电影推荐 + 注册/登录",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mysql2": "^3.11.0"
+  }
+}
